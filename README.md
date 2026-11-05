@@ -4,7 +4,7 @@ The armor from A Township Tale 0.0.32, back in the game: leather, metal and Wyrm
 You wear it on your body and it takes damage off the hits that land there, with the same numbers the
 old build used.
 
-PC only. The same DLL goes on the server and on every player's PC.
+The same DLL goes on the server and on every player's PC.
 
 ## What it adds
 
@@ -66,7 +66,9 @@ loot, metal as Epic. Wyrm armor never dropped in 0.0.32 and does not here unless
 1. Put `ArmorRestored.dll` in the server's `Mods` folder and restart the server.
 2. Every player puts the same `ArmorRestored.dll` in `Mods` in their game folder.
 
-A player without the mod, or with another version of it, cannot join. Quest players cannot join a server that runs it.
+A player without the mod cannot join. Copies that speak the same wire play together, so a 0.2.0 player can
+join a 0.2.1 server. A copy too old or too new for the server is turned away with a note that says which side
+needs the update.
 
 The player's copy does nothing until a server says it runs ArmorRestored, so it can stay in `Mods` when you join
 other servers.
@@ -80,7 +82,7 @@ without the mod, so pieces left lying in the world are lost.
 
 | Setting | Where | What |
 |---|---|---|
-| `join = refuse` | server | refuse players without the mod or on another version; `log` only logs them, `off` skips the check |
+| `join = refuse` | server | refuse players without the mod or with a copy that does not play with the server's; `log` only logs them, `off` skips the check |
 | `loot = on` | server | leather and metal armor in the loot |
 | `wyrm_loot = off` | server | `on` adds Wyrm armor to the loot as Epic |
 | `own_helmet = hide` | player | `show` draws your own helmet |

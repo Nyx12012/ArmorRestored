@@ -13,8 +13,9 @@ namespace ArmorRestored
     internal static class Net
     {
         internal const MessageType Message = (MessageType)137;
-        internal const byte Hello = 1, Equip = 2, Unequip = 3, Ack = 4;
+        internal const byte OldHello = 1, Equip = 2, Unequip = 3, Ack = 4, Hello = 5;
         internal const byte Table = 10, Took = 11, Note = 12, Here = 20;
+        internal const int Wire = 1;
 
         internal static Connection ToServer;
 
@@ -26,12 +27,9 @@ namespace ArmorRestored
                 s.SerializeByte(ref k);
                 string version = Mod.Version;
                 s.SerializeString(ref version, Stream.StringEncoding.UTF8);
+                int wire = Wire;
+                s.SerializeInteger(ref wire);
             });
-        }
-
-        internal static bool SameVersion(string theirs)
-        {
-            return theirs == Mod.Version || theirs != null && theirs.StartsWith(Mod.Version + "-", StringComparison.Ordinal);
         }
 
         internal static void SendHello(Connection c)
@@ -40,6 +38,8 @@ namespace ArmorRestored
             {
                 byte k = Hello;
                 s.SerializeByte(ref k);
+                int wire = Wire;
+                s.SerializeInteger(ref wire);
                 string version = Mod.Version, refused = Prefabs.RefusedLine();
                 s.SerializeString(ref version, Stream.StringEncoding.UTF8);
                 s.SerializeString(ref refused, Stream.StringEncoding.UTF8);
@@ -85,12 +85,14 @@ namespace ArmorRestored
         {
             byte kind = 0;
             s.SerializeByte(ref kind);
-            if (kind == Hello)
+            if (kind == Hello || kind == OldHello)
             {
+                int wire = 1;
+                if (kind == Hello) s.SerializeInteger(ref wire);
                 string version = null, refused = null;
                 s.SerializeString(ref version, Stream.StringEncoding.UTF8);
                 s.SerializeString(ref refused, Stream.StringEncoding.UTF8);
-                lock (Hellos) Hellos[connection.Identifier] = new string[] { version ?? "", refused ?? "" };
+                lock (Hellos) Hellos[connection.Identifier] = new Greeting { Wire = wire, Version = version ?? "", Refused = refused ?? "" };
                 return;
             }
             if (kind == Ack)
@@ -168,8 +170,10 @@ namespace ArmorRestored
             if (kind == Here)
             {
                 string version = null;
+                int wire = 0;
                 s.SerializeString(ref version, Stream.StringEncoding.UTF8);
-                Gate.Open(connection, version);
+                s.SerializeInteger(ref wire);
+                Gate.Open(connection, version, wire);
                 return;
             }
             if (!Gate.IsOpen) return;
@@ -209,7 +213,13 @@ namespace ArmorRestored
             }
         }
 
-        static readonly Dictionary<int, string[]> Hellos = new Dictionary<int, string[]>();
+        sealed class Greeting
+        {
+            public int Wire;
+            public string Version, Refused;
+        }
+
+        static readonly Dictionary<int, Greeting> Hellos = new Dictionary<int, Greeting>();
         static readonly HashSet<int> Acks = new HashSet<int>();
         const int AnswerWait = 5000, LoadWait = 60000;
         static bool _stepInstalled;
@@ -228,7 +238,7 @@ namespace ArmorRestored
         {
             SendHere(connection);
             if (Settings.Join == "off") return;
-            string[] hello = null;
+            Greeting hello = null;
             bool acked = false;
             int waited = 0;
             while (!connection.IsDisposed)
@@ -250,12 +260,13 @@ namespace ArmorRestored
             string problem = null;
             if (hello == null && acked) problem = "Your ArmorRestored did not finish loading in " + (LoadWait / 1000) + " s. Join again.";
             else if (hello == null) problem = "This server needs the ArmorRestored mod " + Mod.Version + ". Install it, then join again.";
-            else if (!SameVersion(hello[0])) problem = "Your ArmorRestored is " + hello[0] + "; this server runs " + Mod.Version + ". Update it, then join again.";
-            else if (hello[1] != Prefabs.RefusedLine()) problem = "ArmorRestored loaded differently here (server refused: " + Or(Prefabs.RefusedLine()) + "; you refused: " + Or(hello[1]) + "). Check both logs.";
+            else if (hello.Wire < Wire) problem = "Your ArmorRestored " + hello.Version + " is too old for this server's " + Mod.Version + ". Update it, then join again.";
+            else if (hello.Wire > Wire) problem = "Your ArmorRestored " + hello.Version + " is newer than this server's " + Mod.Version + ". The server needs an update first.";
+            else if (hello.Refused != Prefabs.RefusedLine()) problem = "ArmorRestored loaded differently here (server refused: " + Or(Prefabs.RefusedLine()) + "; you refused: " + Or(hello.Refused) + "). Check both logs.";
             string who = connection.PlayerName + " (connection " + connection.Identifier + ")";
             if (problem == null)
             {
-                Mod.Log.Msg("join check passed for " + who + " after " + waited + " ms (client " + hello[0] + ")");
+                Mod.Log.Msg("join check passed for " + who + " after " + waited + " ms (client " + hello.Version + ", wire " + hello.Wire + ")");
                 return;
             }
             Mod.Log.Warning("join check: " + who + ": " + problem + (Settings.Join == "refuse" ? " -> refused" : " (log only)"));

@@ -15,7 +15,7 @@ namespace ArmorRestored
         static readonly string[] Lines =
         {
             "# own_helmet = hide | show     (client) draw your own helmet; hidden by default so it never blocks a headset view",
-            "# join = refuse | log | off   what the server does when a player joins without ArmorRestored " + Mod.Version,
+            "# join = refuse | log | off   what the server does when a player joins without an ArmorRestored that plays with this one",
             "# loot = on | off              leather (Rare) and metal (Epic) armor in the global loot table, as in 0.0.32",
             "# wyrm_loot = on | off         also put Wyrm armor in the loot table (Epic); 0.0.32 never dropped it",
             "# debug = off | on             client: log every armor grab, let go and near miss; server: log every hit a player takes, with its armor",

@@ -26,11 +26,17 @@ namespace ArmorRestored
             if (ReferenceEquals(connection, _listening)) Close("left the server");
         }
 
-        internal static void Open(Connection connection, string version)
+        internal static void Open(Connection connection, string version, int wire)
         {
             if (IsOpen || !ReferenceEquals(connection, _listening)) return;
-            IsOpen = true;
             ServerVersion = version ?? "";
+            if (wire != Net.Wire)
+            {
+                Mod.Log.Warning("this server runs ArmorRestored " + ServerVersion + ", which does not play with " + Mod.Version + "; the server decides and armor stays off.");
+                Net.SendHello(connection);
+                return;
+            }
+            IsOpen = true;
             Mod.Log.Msg("this server runs ArmorRestored " + ServerVersion + ": armor is on until you leave.");
             Net.SendAck(connection);
             _loadFrame = Time.frameCount + 2;

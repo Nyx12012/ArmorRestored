@@ -14,6 +14,7 @@ namespace ArmorRestored
         {
             public Player Player;
             public Transform Root;
+            public Transform Rig;
             public Wiring Bones;
             public int[] Shown;
             public GameObject[] Slots = new GameObject[Catalog.SlotCount];
@@ -110,12 +111,19 @@ namespace ArmorRestored
                 if (p == null || p.UserInfo == null || p.PlayerCharacter == null) continue;
                 int[] worn;
                 if (!Table.TryGetValue(p.UserInfo.Identifier, out worn)) worn = ServerArmor.Empty();
+                Transform rig = RigOf(p);
+                if (rig == null) continue;
                 int key = p.PlayerCharacter.GetInstanceID();
                 Dressed d;
-                if (!Bodies.TryGetValue(key, out d))
+                if (Bodies.TryGetValue(key, out d) && d.Rig != rig)
                 {
-                    d = new Dressed { Player = p, Root = p.PlayerCharacter.transform, Shown = ServerArmor.Empty() };
-                    d.Bones = Body.Wire(d.Root, false);
+                    foreach (GameObject g in d.Slots) if (g != null) UnityEngine.Object.Destroy(g);
+                    d = null;
+                }
+                if (d == null)
+                {
+                    d = new Dressed { Player = p, Root = p.PlayerCharacter.transform, Rig = rig, Shown = ServerArmor.Empty() };
+                    d.Bones = Body.Wire(rig, false);
                     Bodies[key] = d;
                 }
                 bool isLocal = ReferenceEquals(p, local);
@@ -130,6 +138,16 @@ namespace ArmorRestored
                     if (Settings.Debug && isLocal && want >= 0) Mod.Log.Msg(Catalog.Title(want) + " sits at " + FromHead(SlotPoint(d, s)).ToString("F2") + " from the head (right, up, forward)");
                 }
             }
+        }
+
+        static Transform RigOf(Player p)
+        {
+            try
+            {
+                Alta.Customization.PlayerCustomizationHandler h = p.PlayerCharacter.CustomizationHandler;
+                return h == null || h.IsDestroyed || h.CharacterDummy == null ? null : h.RootBone;
+            }
+            catch (Exception) { return null; }
         }
 
         static GameObject Build(Dressed d, int piece)
