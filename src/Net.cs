@@ -13,10 +13,26 @@ namespace ArmorRestored
     internal static class Net
     {
         internal const MessageType Message = (MessageType)137;
-        internal const byte Hello = 1, Equip = 2, Unequip = 3;
-        internal const byte Table = 10, Took = 11, Note = 12;
+        internal const byte Hello = 1, Equip = 2, Unequip = 3, Ack = 4;
+        internal const byte Table = 10, Took = 11, Note = 12, Here = 20;
 
         internal static Connection ToServer;
+
+        internal static void SendHere(Connection c)
+        {
+            c.Send(null, Message, delegate (Connection conn, Stream s)
+            {
+                byte k = Here;
+                s.SerializeByte(ref k);
+                string version = Mod.Version;
+                s.SerializeString(ref version, Stream.StringEncoding.UTF8);
+            });
+        }
+
+        internal static bool SameVersion(string theirs)
+        {
+            return theirs == Mod.Version || theirs != null && theirs.StartsWith(Mod.Version + "-", StringComparison.Ordinal);
+        }
 
         internal static void SendHello(Connection c)
         {
@@ -27,6 +43,15 @@ namespace ArmorRestored
                 string version = Mod.Version, refused = Prefabs.RefusedLine();
                 s.SerializeString(ref version, Stream.StringEncoding.UTF8);
                 s.SerializeString(ref refused, Stream.StringEncoding.UTF8);
+            });
+        }
+
+        internal static void SendAck(Connection c)
+        {
+            c.Send(null, Message, delegate (Connection conn, Stream s)
+            {
+                byte k = Ack;
+                s.SerializeByte(ref k);
             });
         }
 
@@ -66,6 +91,11 @@ namespace ArmorRestored
                 s.SerializeString(ref version, Stream.StringEncoding.UTF8);
                 s.SerializeString(ref refused, Stream.StringEncoding.UTF8);
                 lock (Hellos) Hellos[connection.Identifier] = new string[] { version ?? "", refused ?? "" };
+                return;
+            }
+            if (kind == Ack)
+            {
+                lock (Hellos) Acks.Add(connection.Identifier);
                 return;
             }
             Player p = connection.Player as Player;
@@ -135,6 +165,14 @@ namespace ArmorRestored
         {
             byte kind = 0;
             s.SerializeByte(ref kind);
+            if (kind == Here)
+            {
+                string version = null;
+                s.SerializeString(ref version, Stream.StringEncoding.UTF8);
+                Gate.Open(connection, version);
+                return;
+            }
+            if (!Gate.IsOpen) return;
             if (kind == Table)
             {
                 int n = 0;
@@ -172,39 +210,52 @@ namespace ArmorRestored
         }
 
         static readonly Dictionary<int, string[]> Hellos = new Dictionary<int, string[]>();
+        static readonly HashSet<int> Acks = new HashSet<int>();
+        const int AnswerWait = 5000, LoadWait = 60000;
         static bool _stepInstalled;
 
         internal static void InstallJoinStep()
         {
-            if (_stepInstalled || Settings.Join == "off") return;
+            if (_stepInstalled) return;
             ServerHandler server = ServerHandler.Current;
-            if (server == null) { Mod.Log.Warning("join check not installed: no ServerHandler yet"); return; }
+            if (server == null) { Mod.Log.Warning("join step not installed: no ServerHandler yet, so no player gets armor"); return; }
             _stepInstalled = true;
             server.AddConnectionStep(Step);
-            Mod.Log.Msg("join check installed on message " + (int)Message + ", mode " + Settings.Join);
+            Mod.Log.Msg("join step installed on message " + (int)Message + ": every joining player hears that armor is here; join check " + Settings.Join);
         }
 
         static async Task Step(Connection connection, Action<string> progress)
         {
+            SendHere(connection);
             if (Settings.Join == "off") return;
             string[] hello = null;
+            bool acked = false;
             int waited = 0;
-            while (waited < 5000 && !connection.IsDisposed)
+            while (!connection.IsDisposed)
             {
-                lock (Hellos) Hellos.TryGetValue(connection.Identifier, out hello);
-                if (hello != null) break;
+                lock (Hellos)
+                {
+                    Hellos.TryGetValue(connection.Identifier, out hello);
+                    acked = acked || Acks.Contains(connection.Identifier);
+                }
+                if (hello != null || waited >= (acked ? LoadWait : AnswerWait)) break;
                 await Task.Delay(100);
                 waited += 100;
             }
-            lock (Hellos) Hellos.Remove(connection.Identifier);
+            lock (Hellos)
+            {
+                Hellos.Remove(connection.Identifier);
+                Acks.Remove(connection.Identifier);
+            }
             string problem = null;
-            if (hello == null) problem = "This server needs the ArmorRestored mod " + Mod.Version + ". Install it, then join again.";
-            else if (hello[0] != Mod.Version) problem = "Your ArmorRestored is " + hello[0] + "; this server runs " + Mod.Version + ". Update it, then join again.";
+            if (hello == null && acked) problem = "Your ArmorRestored did not finish loading in " + (LoadWait / 1000) + " s. Join again.";
+            else if (hello == null) problem = "This server needs the ArmorRestored mod " + Mod.Version + ". Install it, then join again.";
+            else if (!SameVersion(hello[0])) problem = "Your ArmorRestored is " + hello[0] + "; this server runs " + Mod.Version + ". Update it, then join again.";
             else if (hello[1] != Prefabs.RefusedLine()) problem = "ArmorRestored loaded differently here (server refused: " + Or(Prefabs.RefusedLine()) + "; you refused: " + Or(hello[1]) + "). Check both logs.";
             string who = connection.PlayerName + " (connection " + connection.Identifier + ")";
             if (problem == null)
             {
-                Mod.Log.Msg("join check passed for " + who + " after " + waited + " ms");
+                Mod.Log.Msg("join check passed for " + who + " after " + waited + " ms (client " + hello[0] + ")");
                 return;
             }
             Mod.Log.Warning("join check: " + who + ": " + problem + (Settings.Join == "refuse" ? " -> refused" : " (log only)"));
@@ -252,14 +303,7 @@ namespace ArmorRestored
         static void Postfix(Connection connection)
         {
             if (Mod.IsServer || connection == null) return;
-            try
-            {
-                Net.ToServer = connection;
-                connection.SetHandler(Net.Message, Net.ClientRead);
-                Prefabs.Register("join");
-                Net.SendHello(connection);
-                Mod.Log.Msg("hello sent on message " + (int)Net.Message + "; refused: " + (Prefabs.RefusedLine().Length == 0 ? "none" : Prefabs.RefusedLine()));
-            }
+            try { Gate.Listen(connection); }
             catch (Exception e) { Mod.Log.Error("client handler: " + e.Message); }
         }
     }

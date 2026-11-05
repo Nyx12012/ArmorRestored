@@ -68,6 +68,9 @@ loot, metal as Epic. Wyrm armor never dropped in 0.0.32 and does not here unless
 
 A player without the mod, or with another version of it, cannot join. Quest players cannot join a server that runs it.
 
+The player's copy does nothing until a server says it runs ArmorRestored, so it can stay in `Mods` when you join
+other servers.
+
 To remove it, delete the DLL from the server and from the players. The game cannot load armor
 without the mod, so pieces left lying in the world are lost.
 

@@ -13,7 +13,7 @@ namespace ArmorRestored
     internal static class Mod
     {
         internal const string Name = "ArmorRestored";
-        internal const string Version = "0.2.0";
+        internal const string Version = "0.2.1";
 
         internal static bool IsServer;
         internal static MelonLogger.Instance Log = new MelonLogger.Instance(Name);
@@ -34,12 +34,17 @@ namespace ArmorRestored
             {
                 System.IO.Directory.CreateDirectory(Mod.DataDir);
                 Settings.Load();
-                Pack.Load(!Mod.IsServer);
-                Catalog.Check();
-                if (Mod.IsServer) ServerArmor.Load();
+                if (Mod.IsServer)
+                {
+                    Pack.Load(false);
+                    Catalog.Check();
+                    ServerArmor.Load();
+                }
                 _running = true;
-                Mod.Log.Msg(Mod.Version + " started on the " + (Mod.IsServer ? "server" : "game client") + ": "
-                    + Pack.Pieces.Count + " pieces, join check " + Settings.Join + ", loot " + (Settings.Loot ? "on" : "off") + ".");
+                if (Mod.IsServer)
+                    Mod.Log.Msg(Mod.Version + " started on the server: " + Pack.Pieces.Count + " pieces, join check " + Settings.Join + ", loot " + (Settings.Loot ? "on" : "off") + ".");
+                else
+                    Mod.Log.Msg(Mod.Version + " started on the game client: idle until a server says it runs ArmorRestored.");
             }
             catch (Exception e)
             {
@@ -53,8 +58,19 @@ namespace ArmorRestored
             try
             {
                 if (Mod.IsServer) ServerArmor.Tick();
-                else ClientArmor.Tick();
+                else
+                {
+                    Gate.Tick();
+                    ClientArmor.Tick();
+                }
             }
+            catch (Exception e) { Report(e); }
+        }
+
+        public override void OnSceneWasLoaded(int buildIndex, string sceneName)
+        {
+            if (!_running || Mod.IsServer) return;
+            try { Gate.SceneLoaded(sceneName); }
             catch (Exception e) { Report(e); }
         }
 

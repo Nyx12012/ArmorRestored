@@ -155,8 +155,11 @@ namespace ArmorRestored
         internal static readonly List<MeshDef> Meshes = new List<MeshDef>();
         internal static readonly List<PieceDef> Pieces = new List<PieceDef>();
 
+        internal static bool Loaded { get { return Pieces.Count > 0; } }
+
         internal static void Load(bool visuals)
         {
+            if (Loaded) return;
             Stream s = typeof(Pack).Assembly.GetManifestResourceStream("ArmorRestored.armor.pack");
             if (s == null) throw new FileNotFoundException("the DLL carries no armor.pack");
             using (BinaryReader r = new BinaryReader(s))

@@ -48,9 +48,25 @@ namespace ArmorRestored
         static float _nextCensus;
         static string _lastCensus;
 
+        internal static void Clear()
+        {
+            foreach (Dressed d in Bodies.Values)
+                foreach (GameObject g in d.Slots)
+                    if (g != null) UnityEngine.Object.Destroy(g);
+            Bodies.Clear();
+            Table.Clear();
+            Held[0] = Held[1] = null;
+            Closed[0] = Closed[1] = false;
+            PendingSlot[0] = PendingSlot[1] = -1;
+            Debugged[0] = Debugged[1] = null;
+            _tookId = 0;
+            _tableDirty = false;
+            _lastCensus = null;
+        }
+
         internal static void Tick()
         {
-            if (!Prefabs.Done) return;
+            if (!Gate.IsOpen || !Prefabs.Done) return;
             if (Settings.Debug && Time.unscaledTime >= _nextCensus) Census();
             if (_tableDirty || Time.unscaledTime >= _nextDress)
             {

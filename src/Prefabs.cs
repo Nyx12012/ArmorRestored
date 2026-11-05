@@ -112,6 +112,35 @@ namespace ArmorRestored
             }
         }
 
+        internal static string Unregister()
+        {
+            FieldInfo mapField = typeof(PrefabManager).GetField("prefabMap", Stat);
+            FieldInfo itemsField = typeof(HashedGeneralValue<Item>).GetField("items", Stat);
+            Dictionary<uint, NetworkPrefab> map = mapField != null ? (Dictionary<uint, NetworkPrefab>)mapField.GetValue(null) : null;
+            Dictionary<uint, Item> items = itemsField != null ? (Dictionary<uint, Item>)itemsField.GetValue(null) : null;
+            int prefabs = 0, gone = 0;
+            for (int i = 0; i < Catalog.Count; i++)
+            {
+                uint number = (uint)Catalog.Number(i);
+                NetworkPrefab mine;
+                if (map != null && ByPiece[i] != null && map.TryGetValue(number, out mine) && ReferenceEquals(mine, ByPiece[i]) && map.Remove(number)) prefabs++;
+                Item it;
+                if (items != null && Items[i] != null && items.TryGetValue(number, out it) && ReferenceEquals(it, Items[i]) && items.Remove(number)) gone++;
+                if (Items[i] != null) UnityEngine.Object.Destroy(Items[i]);
+                ByPiece[i] = null;
+                Items[i] = null;
+                Refused[i] = null;
+            }
+            FieldInfo byName = typeof(HashedGeneralValue<Item>).GetField("itemsByName", Stat);
+            if (byName != null) byName.SetValue(null, null);
+            if (_holder != null) UnityEngine.Object.Destroy(_holder);
+            _holder = null;
+            Done = false;
+            Seam = null;
+            _waitLogged = false;
+            return "armor pieces removed: " + prefabs + " prefabs, " + gone + " items.";
+        }
+
         static string Build(int piece, NetworkPrefab source, Item sourceItem, Dictionary<uint, Item> items, MethodInfo addToMap, FieldInfo prefabHash, FieldInfo itemHash)
         {
             uint number = (uint)Catalog.Number(piece);
@@ -237,6 +266,7 @@ namespace ArmorRestored
         [HarmonyPriority(Priority.First)]
         static void Postfix()
         {
+            if (!Mod.IsServer && !Gate.IsOpen) return;
             try { Prefabs.Register("PrepareSpawnSetups"); }
             catch (Exception e) { Mod.Log.Error("prefab seam: " + e.Message); }
         }
